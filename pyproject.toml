@@ -1,0 +1,52 @@
+[project]
+name = "financial-10k-agentic-rag"
+version = "0.1.0"
+description = "Agentic RAG pipeline for 10-K financial analysis"
+requires-python = ">=3.11"
+dependencies = [
+    # SEC Data Download
+    "sec-edgar-downloader>=5.0.3",
+    # Task Queue
+    "redis>=5.0.0",
+    "rq>=1.16.0",
+    # HTML Processing
+    "beautifulsoup4>=4.12.0",
+    "readability-lxml>=0.8.1",
+    "lxml>=5.0.0",
+    # Text Chunking
+    "langchain-text-splitters>=0.2.0",
+    # HTTP Client
+    "httpx>=0.27.0",
+    # Vector Store
+    "qdrant-client>=1.9.0",
+    # Configuration
+    "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
+    # Observability
+    "arize-phoenix>=4.0.0",
+    "openinference-instrumentation>=0.1.12",
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+    "opentelemetry-instrumentation-fastapi>=0.44b0",
+    # Utilities
+    "tenacity>=8.2.0",
+    "structlog>=24.1.0",
+    # Google ADK
+    "google-adk>=0.5.0",
+    # LiteLLM for Together.ai integration
+    "litellm>=1.40.0",
+    # Together.ai SDK
+    "together>=1.2.0",
+    # FastAPI
+    "fastapi>=0.110.0",
+    "uvicorn[standard]>=0.27.0",
+    # Rate limiting
+    "slowapi>=0.1.9",
+    # Caching
+    "cachetools>=5.3.0",
+]
+
+[project.scripts]
+worker = "src.queue.worker:main"
+reindex = "scripts.reindex:main"

@@ -39,3 +39,9 @@ data/raw_10k/*
 !data/raw_10k/.gitkeep
 qdrant_data/
 claude_sessions/*
+src/financial_10k_agent/.adk/session.db
+edgar_filings
+src/.adk/session.db
+src/financial_10k_agent/financial_10k_agent/.adk/session.db
+financial_10k_agent/.adk/session.db
+uv.lock
