@@ -4,6 +4,8 @@ Download SEC 10-K filings from EDGAR with robust error handling and retry logic.
 
 Supports single ticker/year downloads or bulk CSV processing.
 Implements exponential backoff for transient failures and respects SEC fair access policy.
+
+After successful downloads, pushes indexing tasks to Redis queue.
 """
 
 import argparse
@@ -159,6 +161,88 @@ def validate_year(year: int) -> int:
     return year
 
 
+def find_downloaded_file(output_dir: str, ticker: str) -> Path | None:
+    """
+    Find the most recently downloaded primary-document.html for a ticker.
+
+    Args:
+        output_dir: Base output directory
+        ticker: Stock ticker symbol
+
+    Returns:
+        Path to primary-document.html or None if not found
+    """
+    base = Path(output_dir) / "sec-edgar-filings" / ticker / "10-K"
+    if not base.exists():
+        return None
+
+    html_files = list(base.glob("*/primary-document.html"))
+    if not html_files:
+        return None
+
+    return max(html_files, key=lambda p: p.stat().st_mtime)
+
+
+def extract_accession_from_path(file_path: Path) -> str | None:
+    """Extract accession number from file path."""
+    parts = file_path.parts
+    for i, part in enumerate(parts):
+        if part == "10-K" and i + 1 < len(parts):
+            return parts[i + 1]
+    return None
+
+
+def push_to_queue(
+    file_path: Path,
+    ticker: str,
+    year: int,
+    redis_enabled: bool = True,
+) -> bool:
+    """
+    Push indexing task to Redis queue.
+
+    Args:
+        file_path: Path to downloaded HTML file
+        ticker: Stock ticker symbol
+        year: Filing year
+        redis_enabled: Whether to actually push to Redis
+
+    Returns:
+        True if successfully pushed, False otherwise
+    """
+    if not redis_enabled:
+        return True
+
+    try:
+        from src.task_queue.tasks import FilingTask, enqueue_filing
+
+        accession = extract_accession_from_path(file_path)
+        if not accession:
+            logger.warning(f"Could not extract accession number from {file_path}")
+            return False
+
+        cik = accession.split("-")[0] if accession else ""
+
+        task = FilingTask(
+            file_path=str(file_path),
+            ticker=ticker,
+            year=year,
+            cik=cik,
+            accession_number=accession,
+        )
+
+        job_id = enqueue_filing(task)
+        logger.info(f"Queued indexing task for {ticker} ({year}): job_id={job_id}")
+        return True
+
+    except ImportError:
+        logger.debug("Redis queue not available, skipping task push")
+        return True
+    except Exception as e:
+        logger.warning(f"Failed to push task to queue: {e}")
+        return False
+
+
 def _download_worker(
     task: tuple[str, int, int],
     company_name: str,
@@ -166,6 +250,7 @@ def _download_worker(
     output_dir: str,
     rate_limiter: RateLimiter,
     progress: ProgressTracker,
+    redis_enabled: bool = True,
 ) -> bool:
     """
     Worker function for parallel downloads.
@@ -181,6 +266,7 @@ def _download_worker(
         output_dir: Download destination directory
         rate_limiter: Shared rate limiter instance
         progress: Shared progress tracker instance
+        redis_enabled: Whether to push tasks to Redis queue
 
     Returns:
         True if download succeeded, False otherwise
@@ -188,26 +274,28 @@ def _download_worker(
     ticker, year, row_num = task
 
     try:
-        
         validated_ticker = validate_ticker(ticker)
         validated_year = validate_year(year)
 
-        
         downloader = Downloader(
             company_name=company_name,
             email_address=email,
             download_folder=output_dir,
         )
 
-        
         rate_limiter.acquire()
 
-        
         success = download_single_with_retry(downloader, validated_ticker, validated_year)
 
-        
         if success:
             progress.increment_success()
+
+            # Push indexing task to Redis queue
+            downloaded_file = find_downloaded_file(output_dir, validated_ticker)
+            if downloaded_file:
+                push_to_queue(downloaded_file, validated_ticker, validated_year, redis_enabled)
+            else:
+                logger.warning(f"Could not find downloaded file for {validated_ticker}")
         else:
             progress.increment_failure()
 
@@ -333,6 +421,7 @@ def download_from_csv(
     company_name: str | None = None,
     email: str | None = None,
     output_dir: str | None = None,
+    redis_enabled: bool = True,
 ) -> None:
     """
     Read CSV and download 10-Ks using parallel workers.
@@ -347,6 +436,7 @@ def download_from_csv(
         company_name: SEC user-agent company name (extracted from downloader if None)
         email: SEC user-agent email (extracted from downloader if None)
         output_dir: Download directory (extracted from downloader if None)
+        redis_enabled: Whether to push tasks to Redis queue after download
 
     Raises:
         FileNotFoundError: If CSV doesn't exist
@@ -434,7 +524,6 @@ def download_from_csv(
 
     
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        
         future_to_task = {
             executor.submit(
                 _download_worker,
@@ -444,6 +533,7 @@ def download_from_csv(
                 output_dir,
                 rate_limiter,
                 progress,
+                redis_enabled,
             ): task
             for task in tasks
         }
@@ -528,6 +618,11 @@ Examples:
         default=1.0,
         help="Minimum seconds between requests (default: 1.0, min: 0.5)",
     )
+    parser.add_argument(
+        "--no-queue",
+        action="store_true",
+        help="Disable pushing tasks to Redis queue after download",
+    )
 
     args = parser.parse_args()
 
@@ -574,12 +669,21 @@ Examples:
         return 1
 
     
+    redis_enabled = not args.no_queue
+
     try:
         if args.ticker and args.year:
             single_start_time = time.time()
             download_single(downloader, args.ticker, args.year)
             single_elapsed = time.time() - single_start_time
             logger.info(f"Download completed successfully in {single_elapsed:.2f}s")
+
+            # Push to queue for single download
+            if redis_enabled:
+                downloaded_file = find_downloaded_file(args.output_dir, args.ticker.upper())
+                if downloaded_file:
+                    push_to_queue(downloaded_file, args.ticker.upper(), args.year, redis_enabled)
+
         elif args.csv:
             download_from_csv(
                 downloader,
@@ -589,6 +693,7 @@ Examples:
                 company_name=args.company,
                 email=args.email,
                 output_dir=args.output_dir,
+                redis_enabled=redis_enabled,
             )
         else:
             parser.error("Invalid combination of arguments")

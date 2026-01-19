@@ -224,6 +224,51 @@ class Settings(BaseSettings):
         description="Enable verbose agent logging",
     )
 
+    # Together.ai Configuration
+    together_api_key: str = Field(
+        default="",
+        description="Together.ai API key",
+    )
+    together_model_agent: str = Field(
+        default="meta-llama/Llama-3.3-70B-Instruct-Turbo",
+        description="Main agent model via Together.ai",
+    )
+    together_model_small: str = Field(
+        default="meta-llama/Llama-3.2-3B-Instruct-Turbo",
+        description="Small model for classification/assessment",
+    )
+
+    # Intent Classification
+    intent_confidence_threshold: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence for intent classification",
+    )
+
+    # Vector Cache
+    vector_cache_ttl_seconds: int = Field(
+        default=300,
+        gt=0,
+        description="TTL for vector cache in seconds (default 5 minutes)",
+    )
+    vector_cache_max_size: int = Field(
+        default=100,
+        gt=0,
+        description="Maximum entries in vector cache",
+    )
+
+    # Quality Assessment
+    max_retry_count: int = Field(
+        default=3,
+        gt=0,
+        description="Maximum retry attempts for quality gate failures",
+    )
+    quality_gate_enabled: bool = Field(
+        default=True,
+        description="Enable quality assessment gate",
+    )
+
     @field_validator("sec_email")
     @classmethod
     def validate_email(cls, v: str) -> str:

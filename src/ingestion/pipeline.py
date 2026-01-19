@@ -20,7 +20,7 @@ from src.ingestion.chunker import Chunker, TextChunk
 from src.ingestion.embedder import Embedder
 from src.ingestion.html_parser import HTMLParser
 from src.ingestion.metadata import FilingMetadata, MetadataExtractor
-from src.queue.tasks import FilingTask
+from src.task_queue.tasks import FilingTask
 from src.store.qdrant_local import ChunkPayload, QdrantStore, get_qdrant_store
 
 logger = structlog.get_logger(__name__)

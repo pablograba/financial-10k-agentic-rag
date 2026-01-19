@@ -60,7 +60,7 @@ def reindex_all(
         scan_raw_10k_directory,
         get_unindexed_filings,
     )
-    from src.queue.tasks import FilingTask, enqueue_filing
+    from src.task_queue.tasks import FilingTask, enqueue_filing
 
     if force:
         filings = scan_raw_10k_directory()
@@ -105,7 +105,7 @@ def _process_sequential(filings: list[dict], force: bool) -> tuple[int, int]:
         tuple[int, int]: (processed_count, total_chunks)
     """
     from src.ingestion.pipeline import IndexingPipeline
-    from src.queue.tasks import FilingTask
+    from src.task_queue.tasks import FilingTask
 
     pipeline = IndexingPipeline()
     processed = 0
@@ -204,7 +204,7 @@ def reindex_ticker(
     """
     from src.config import get_settings
     from src.ingestion.metadata import extract_accession_from_path
-    from src.queue.tasks import FilingTask, enqueue_filing
+    from src.task_queue.tasks import FilingTask, enqueue_filing
 
     settings = get_settings()
     base_dir = Path(settings.sec_output_dir) / "sec-edgar-filings" / ticker.upper() / "10-K"

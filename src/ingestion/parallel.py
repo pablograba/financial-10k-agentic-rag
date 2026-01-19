@@ -13,7 +13,7 @@ from typing import Callable
 
 import structlog
 
-from src.queue.tasks import FilingTask
+from src.task_queue.tasks import FilingTask
 
 logger = structlog.get_logger(__name__)
 
