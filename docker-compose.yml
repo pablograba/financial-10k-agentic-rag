@@ -1,0 +1,152 @@
+# =============================================================================
+# Agentic 10-K RAG - Docker Compose
+# =============================================================================
+#
+# Usage:
+#   # Start Ollama natively first (required on macOS)
+#   ./scripts/start_ollama.sh
+#
+#   # Start all containerized services
+#   docker-compose up -d
+#
+#   # View logs
+#   docker-compose logs -f worker
+#
+# =============================================================================
+
+services:
+  # =============================================================================
+  # Redis - Task Queue
+  # =============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: agentic-rag-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =============================================================================
+  # Qdrant - Vector Database
+  # =============================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: agentic-rag-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f -s http://localhost:6333/readyz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # =============================================================================
+  # Phoenix - Observability & Tracing
+  # =============================================================================
+  phoenix:
+    image: arizephoenix/phoenix:latest
+    container_name: agentic-rag-phoenix
+    ports:
+      - "6006:6006"
+    environment:
+      - PHOENIX_WORKING_DIR=/phoenix
+    volumes:
+      - phoenix_data:/phoenix
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6006/healthz || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # =============================================================================
+  # Worker - rq Worker for Indexing
+  # =============================================================================
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: production
+    container_name: agentic-rag-worker
+    command: python -m src.queue.worker
+    volumes:
+      - ./data/raw_10k:/app/data/raw_10k:ro
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_PATH=
+      - QDRANT_URL=http://qdrant:6333
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+      - SEC_OUTPUT_DIR=/app/data/raw_10k
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      # qdrant:
+      #   condition: service_healthy
+    restart: unless-stopped
+
+  # =============================================================================
+  # API - FastAPI Chatbot Server
+  # =============================================================================
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: production
+  #   container_name: agentic-rag-api
+  #   command: uvicorn src.main:app --host 0.0.0.0 --port 8000
+  #   ports:
+  #     - "8000:8000"
+  #   environment:
+  #     - REDIS_URL=redis://redis:6379/0
+  #     - QDRANT_PATH=
+  #     - QDRANT_URL=http://qdrant:6333
+  #     - OLLAMA_BASE_URL=http://host.docker.internal:11434
+  #     - PHOENIX_COLLECTOR_ENDPOINT=http://phoenix:6006
+  #     - API_HOST=0.0.0.0
+  #     - API_PORT=8000
+  #     - LOG_LEVEL=${LOG_LEVEL:-INFO}
+  #     - DEBUG=${DEBUG:-false}
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #     qdrant:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "curl -sf http://localhost:8000/health || exit 1"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #   restart: unless-stopped
+
+# =============================================================================
+# Volumes - Persistent storage
+# =============================================================================
+volumes:
+  redis_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  phoenix_data:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  default:
+    name: agentic-rag-network
