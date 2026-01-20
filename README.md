@@ -52,7 +52,8 @@ Phoenix (Tracing & Observability)
 - **Phoenix** – Full tracing of retrieval, agent steps, and evaluation runs
 - **Redis** – Job queue and result backend
 
-(Architecture diagram: `docs/architecture.png`)
+(Architecture diagram: `docs/production-grade-agentic-rag-architecture-ove
+r-10k-filings.png`)
 
 ## Trade-offs & Design Decisions
 
