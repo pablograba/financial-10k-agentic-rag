@@ -26,6 +26,8 @@ How I leverage Claude Code, Grok and other LLMs to navigate complex architectura
 
 ##  Architecture Overview
 
+![Architecture Diagram](docs/production-grade-agentic-rag-architecture-over-10k-filings.png)
+
 The system is fully containerized with **Docker Compose**:
 Downloader (CLI) → Redis (Queue) → Worker (RQ)
 ↓
@@ -51,8 +53,6 @@ Phoenix (Tracing & Observability)
     -   meta-llama/Llama-3.2-3B-Instruct-Turbo used as "small" model for more simlpe tasks such as determine the question intent.
 - **Phoenix** – Full tracing of retrieval, agent steps, and evaluation runs
 - **Redis** – Job queue and result backend
-
-(Architecture diagram: `docs/architecture.png`)
 
 ## Trade-offs & Design Decisions
 
